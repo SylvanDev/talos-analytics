@@ -52,46 +52,53 @@ export const findArbitrageOpportunities = async (
     
     const opportunities: ArbitrageOpportunity[] = [];
     
-    // A. Filter Polymarket for Esports (BROADER SEARCH)
-    // Polymarket tags are inconsistent, so we search strictly in title and tags with more keywords
-    const keywords = ['esport', 'csgo', 'cs:go', 'dota', 'lol', 'league of legends', 'counter-strike', 'valorant', 'gaming', 'fifa', 'call of duty'];
+    // A. Broad Filter (Esports + Traditional Sports)
+    // We broaden the scope to ensure we find matches if Esports is quiet
+    const keywords = [
+        'esport', 'csgo', 'dota', 'lol', 'valorant', 
+        'soccer', 'football', 'premier league', 'champions league',
+        'nba', 'basketball', 
+        'ufc', 'mma', 'fight'
+    ];
     
-    const esportsPoly = polymarketEvents.filter(e => {
+    const targetPolyEvents = polymarketEvents.filter(e => {
         const text = (e.title + ' ' + e.tags.join(' ')).toLowerCase();
         return keywords.some(k => text.includes(k));
     });
 
     // B. Fetch REAL Odds (BetBoom via API)
-    // This now fetches keys dynamically so no 404s
+    // Now fetches generic sports too
     const bookieMatches = await fetchEsportsOdds();
 
-    console.log(`Scanning ${esportsPoly.length} Poly events against ${bookieMatches.length} BetBoom matches...`);
+    console.log(`Scanning ${targetPolyEvents.length} Poly events against ${bookieMatches.length} Bookmaker matches...`);
 
     // C. Compare
-    for (const polyEvent of esportsPoly) {
+    for (const polyEvent of targetPolyEvents) {
         if (!polyEvent.markets) continue;
 
         for (const bookieMatch of bookieMatches) {
             // Check Identity via Gemini
-            // We optimize simply by checking if one string contains another before paying for AI call
+            
+            // Heuristic pre-filter to save time/AI tokens
             const polySimple = polyEvent.title.toLowerCase();
-            const bookieSimple = `${bookieMatch.home_team} ${bookieMatch.away_team}`.toLowerCase();
+            const homeSimple = bookieMatch.home_team.toLowerCase();
+            const awaySimple = bookieMatch.away_team.toLowerCase();
             
-            // Heuristic pre-filter to save time
-            const isWorthChecking = polySimple.includes(bookieMatch.home_team.toLowerCase()) || polySimple.includes(bookieMatch.away_team.toLowerCase());
+            // Loose check: Does poly title contain one of the team names?
+            const isPotentialMatch = polySimple.includes(homeSimple) || polySimple.includes(awaySimple);
             
-            if (!isWorthChecking) continue;
+            if (!isPotentialMatch) continue;
 
             const matchResult = await verifyEventIdentity(polyEvent.title, `${bookieMatch.home_team} vs ${bookieMatch.away_team}`);
             
-            if (matchResult.isMatch && matchResult.confidence > 0.75) {
+            if (matchResult.isMatch && matchResult.confidence > 0.70) {
                 
-                // STRICT FILTER: We only care about BetBoom
-                const betBoom = bookieMatch.bookmakers.find(b => b.key === 'betboom' || b.title.toLowerCase().includes('betboom'));
+                // Get BetBoom (or fallback to any if BetBoom missing in this specific response)
+                const bookie = bookieMatch.bookmakers.find(b => b.key === 'betboom') || bookieMatch.bookmakers[0];
                 
-                if (!betBoom) continue; // Skip if BetBoom has no odds for this match
+                if (!bookie) continue; 
 
-                const marketH2H = betBoom.markets.find(m => m.key === 'h2h');
+                const marketH2H = bookie.markets.find(m => m.key === 'h2h');
                 if (!marketH2H) continue;
 
                 // Loop Poly Markets
@@ -107,7 +114,7 @@ export const findArbitrageOpportunities = async (
                     
                     let targetBookieOutcome = null;
 
-                    // Match Logic: If Poly is Team A, we need Team B on BetBoom to hedge
+                    // Match Logic: If Poly is Team A, we need Team B on Bookie to hedge
                     if (outcomeName.includes(teamA.toLowerCase())) {
                         targetBookieOutcome = marketH2H.outcomes.find(o => o.name === teamB);
                     } else if (outcomeName.includes(teamB.toLowerCase())) {
@@ -127,7 +134,7 @@ export const findArbitrageOpportunities = async (
                              polymarketPrice: polyPrice,
                              polymarketUrl: `https://polymarket.com/event/${polyEvent.slug}`,
                              
-                             bookmakerName: "BetBoom", 
+                             bookmakerName: bookie.title, 
                              bookmakerEvent: `${bookieMatch.home_team} vs ${bookieMatch.away_team}`,
                              bookmakerTeam: targetBookieOutcome.name,
                              bookmakerOdds: bookieOdds,
