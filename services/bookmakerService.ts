@@ -13,37 +13,38 @@ export const fetchEsportsOdds = async (): Promise<BookmakerMatch[]> => {
   try {
     let allMatches: BookmakerMatch[] = [];
 
-    // 1. DYNAMICALLY FETCH ACTIVE SPORTS (Fixes 404s)
-    // We ask the API: "What sports are available right now?"
+    // 1. DYNAMICALLY FETCH ACTIVE SPORTS
     const sportsUrl = `${BASE_URL}/?apiKey=${ODDS_API_KEY}`;
     const sportsRes = await fetch(sportsUrl);
     
-    if (!sportsRes.ok) {
-        console.error("Failed to fetch active sports list:", sportsRes.status);
-        return [];
+    let esportsKeys: string[] = [];
+
+    if (sportsRes.ok) {
+        const allSports = await sportsRes.json();
+        if (Array.isArray(allSports)) {
+             esportsKeys = allSports
+                .filter((s: any) => s.group.toLowerCase().includes('esport') || s.key.toLowerCase().includes('esport'))
+                .map((s: any) => s.key);
+        }
     }
 
-    const allSports = await sportsRes.json();
-    
-    if (!Array.isArray(allSports)) {
-        console.error("Sports list is not an array");
-        return [];
+    // FALLBACK IF DYNAMIC FAILS (Crucial Fix)
+    // If the API returns 0 keys for 'esport' group, we force check these specific keys
+    if (esportsKeys.length === 0) {
+        console.warn("Dynamic discovery returned 0 keys. Using Fallback Keys.");
+        esportsKeys = [
+            'esports_csgo', 
+            'esports_dota2', 
+            'esports_leagueoflegends', 
+            'esports_valorant'
+        ];
+    } else {
+        console.log("Active Esports Keys found:", esportsKeys);
     }
 
-    // 2. FILTER FOR ESPORTS
-    // We look for anything that looks like esports
-    const esportsKeys = allSports
-        .filter((s: any) => s.group.toLowerCase().includes('esport') || s.key.toLowerCase().includes('esport'))
-        .map((s: any) => s.key);
-
-    console.log("Active Esports Keys found:", esportsKeys);
-
-    if (esportsKeys.length === 0) return [];
-
-    // 3. FETCH ODDS FOR ACTIVE KEYS
+    // 2. FETCH ODDS
     for (const key of esportsKeys) {
         // requesting specifically BetBoom (key: betboom) in EU region
-        // fallback to generic query if betboom specific fails, but filter later
         const url = `${BASE_URL}/${key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&bookmakers=betboom&markets=h2h&oddsFormat=decimal`;
         
         try {
@@ -54,7 +55,6 @@ export const fetchEsportsOdds = async (): Promise<BookmakerMatch[]> => {
                     allMatches = [...allMatches, ...data];
                 }
             } else {
-                // Just log warning, don't break loop
                 console.warn(`No odds for ${key}: ${res.status}`);
             }
         } catch (err) {
