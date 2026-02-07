@@ -17,34 +17,40 @@ export const fetchEsportsOdds = async (): Promise<BookmakerMatch[]> => {
     const sportsUrl = `${BASE_URL}/?apiKey=${ODDS_API_KEY}`;
     const sportsRes = await fetch(sportsUrl);
     
-    let esportsKeys: string[] = [];
+    let targetKeys: string[] = [];
 
     if (sportsRes.ok) {
         const allSports = await sportsRes.json();
         if (Array.isArray(allSports)) {
-             esportsKeys = allSports
-                .filter((s: any) => s.group.toLowerCase().includes('esport') || s.key.toLowerCase().includes('esport'))
-                .map((s: any) => s.key);
+             // FILTER: Capture Esports, but also Soccer/MMA/Basketball to ensure we have data to compare
+             targetKeys = allSports
+                .filter((s: any) => {
+                    const group = s.group.toLowerCase();
+                    return s.active && (
+                        group.includes('esport') || 
+                        group.includes('soccer') || 
+                        s.key.includes('ufc') ||
+                        group.includes('basketball')
+                    );
+                })
+                .map((s: any) => s.key)
+                .slice(0, 8); // Limit to top 8 leagues to save API quota
         }
-    }
-
-    // FALLBACK IF DYNAMIC FAILS (Crucial Fix)
-    // If the API returns 0 keys for 'esport' group, we force check these specific keys
-    if (esportsKeys.length === 0) {
-        console.warn("Dynamic discovery returned 0 keys. Using Fallback Keys.");
-        esportsKeys = [
-            'esports_csgo', 
-            'esports_dota2', 
-            'esports_leagueoflegends', 
-            'esports_valorant'
-        ];
     } else {
-        console.log("Active Esports Keys found:", esportsKeys);
+        console.error("Failed to fetch sports list", sportsRes.status);
+        return [];
     }
 
-    // 2. FETCH ODDS
-    for (const key of esportsKeys) {
-        // requesting specifically BetBoom (key: betboom) in EU region
+    console.log("Active Sports Keys found:", targetKeys);
+
+    if (targetKeys.length === 0) {
+        console.warn("No active supported sports found in API.");
+        return [];
+    }
+
+    // 2. FETCH ODDS FOR FOUND KEYS
+    for (const key of targetKeys) {
+        // requesting BetBoom (eu)
         const url = `${BASE_URL}/${key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&bookmakers=betboom&markets=h2h&oddsFormat=decimal`;
         
         try {
@@ -55,7 +61,8 @@ export const fetchEsportsOdds = async (): Promise<BookmakerMatch[]> => {
                     allMatches = [...allMatches, ...data];
                 }
             } else {
-                console.warn(`No odds for ${key}: ${res.status}`);
+                // Warning implies no data for this specific league, not a system crash
+                console.warn(`No odds data for ${key} (Status: ${res.status})`);
             }
         } catch (err) {
             console.error(`Fetch error for ${key}`, err);
