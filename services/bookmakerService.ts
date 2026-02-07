@@ -1,96 +1,50 @@
 import { BookmakerMatch } from "../types";
 
-const ODDS_API_KEY = (import.meta as any).env?.VITE_ODDS_API_KEY || (process.env as any).VITE_ODDS_API_KEY;
+// HARDCODED REAL KEY AS REQUESTED
+const ODDS_API_KEY = "1a4af9d22ff22e09f7fded6676615fab";
 const BASE_URL = 'https://api.the-odds-api.com/v4/sports';
 
-// MOCK DATA for testing without burning API credits
-const MOCK_ODDS: BookmakerMatch[] = [
-  {
-    id: "mock-1",
-    sport_key: "esports_csgo",
-    sport_title: "CS:GO",
-    commence_time: new Date(Date.now() + 3600000).toISOString(),
-    home_team: "Team Spirit",
-    away_team: "FaZe Clan",
-    bookmakers: [
-      {
-        key: "pinnacle",
-        title: "Pinnacle",
-        last_update: new Date().toISOString(),
-        markets: [
-          {
-            key: "h2h",
-            outcomes: [
-              { name: "Team Spirit", price: 1.45 },
-              { name: "FaZe Clan", price: 2.75 } // Implied ~36%
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "mock-2",
-    sport_key: "esports_dota2",
-    sport_title: "Dota 2",
-    commence_time: new Date(Date.now() + 7200000).toISOString(),
-    home_team: "Gaimin Gladiators",
-    away_team: "Team Liquid",
-    bookmakers: [
-      {
-        key: "betfair",
-        title: "Betfair",
-        last_update: new Date().toISOString(),
-        markets: [
-          {
-            key: "h2h",
-            outcomes: [
-              { name: "Gaimin Gladiators", price: 1.60 },
-              { name: "Team Liquid", price: 2.30 }
-            ]
-          }
-        ]
-      }
-    ]
-  }
-];
-
-export const fetchEsportsOdds = async (useMock = true): Promise<BookmakerMatch[]> => {
-  if (useMock || !ODDS_API_KEY) {
-    console.log("Using Mock Bookmaker Data");
-    return new Promise((resolve) => setTimeout(() => resolve(MOCK_ODDS), 800));
+export const fetchEsportsOdds = async (): Promise<BookmakerMatch[]> => {
+  if (!ODDS_API_KEY) {
+    console.error("API Key missing.");
+    return [];
   }
 
   try {
-    // Fetching generic esports data. In a real app, you might iterate through keys:
-    // upcoming, esports_csgo, esports_dota2, etc.
-    // For demo, we'll try to fetch general esports if available or specific games
+    // Specific Esports keys supported by Odds API
     const sportKeys = ['esports_csgo', 'esports_dota2', 'esports_leagueoflegends'];
     let allMatches: BookmakerMatch[] = [];
 
+    // Fetch strictly from API. No mocks.
     for (const key of sportKeys) {
-        const url = `${BASE_URL}/${key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu,us&markets=h2h&oddsFormat=decimal`;
+        // requesting specifically BetBoom (key: betboom) in EU region
+        const url = `${BASE_URL}/${key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&bookmakers=betboom&markets=h2h&oddsFormat=decimal`;
+        
         const res = await fetch(url);
         if (res.ok) {
+            // Check quota headers if needed, but for now just get json
             const data = await res.json();
-            allMatches = [...allMatches, ...data];
+            if (Array.isArray(data)) {
+                allMatches = [...allMatches, ...data];
+            }
+        } else {
+            console.error(`API Error for ${key}: ${res.status}`);
         }
     }
     
     return allMatches;
   } catch (e) {
-    console.error("Odds API Error:", e);
-    return MOCK_ODDS; // Fallback
+    console.error("Critical Odds API Error:", e);
+    return []; // Return empty array on error, NEVER mock data
   }
 };
 
-// Math Helpers
+// Math Helpers remain the same
 export const calculateArbProfit = (odds1: number, odds2: number) => {
     const implied1 = 1 / odds1;
     const implied2 = 1 / odds2;
     const totalImplied = implied1 + implied2;
     
-    // If total < 1.0, we have an arb
     const profitMargin = (1 / totalImplied) - 1;
     return {
         totalImplied,
