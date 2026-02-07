@@ -6,8 +6,9 @@ const REAL_API_URL = "https://gamma-api.polymarket.com/events";
 
 export const fetchTopMarkets = async (): Promise<{ data: PolymarketEvent[], source: string }> => {
   
+  // CHANGED LIMIT FROM 50 TO 300 TO CATCH ESPORTS EVENTS
   const params = new URLSearchParams({
-      limit: '50',
+      limit: '300', 
       active: 'true',
       closed: 'false',
       sort: 'liquidity', 
@@ -26,6 +27,7 @@ export const fetchTopMarkets = async (): Promise<{ data: PolymarketEvent[], sour
     if (response.ok) {
         const data = await response.json();
         if (Array.isArray(data)) {
+            console.log(`Polymarket: Fetched ${data.length} raw events`); // Debug log
             return { data: mapData(data), source: 'Gamma API (Authenticated)' };
         }
     } else {
@@ -35,10 +37,9 @@ export const fetchTopMarkets = async (): Promise<{ data: PolymarketEvent[], sour
       console.warn("Proxy attempt failed", e);
   }
 
-  // 2. TRY EXTERNAL PROXY (Backup - headers might be stripped by AllOrigins, but worth a try)
+  // 2. TRY EXTERNAL PROXY (Backup)
   try {
       const targetUrl = `${REAL_API_URL}?${params}`;
-      // Note: AllOrigins doesn't forward custom headers, so this is a fallback to public
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
       const response = await fetch(proxyUrl);
       if (response.ok) {
