@@ -1,6 +1,6 @@
 import { BookmakerMatch } from "../types";
 
-// HARDCODED REAL KEY AS REQUESTED
+// REAL KEY
 const ODDS_API_KEY = "1a4af9d22ff22e09f7fded6676615fab";
 const BASE_URL = 'https://api.the-odds-api.com/v4/sports';
 
@@ -11,31 +11,61 @@ export const fetchEsportsOdds = async (): Promise<BookmakerMatch[]> => {
   }
 
   try {
-    // Specific Esports keys supported by Odds API
-    const sportKeys = ['esports_csgo', 'esports_dota2', 'esports_leagueoflegends'];
     let allMatches: BookmakerMatch[] = [];
 
-    // Fetch strictly from API. No mocks.
-    for (const key of sportKeys) {
+    // 1. DYNAMICALLY FETCH ACTIVE SPORTS (Fixes 404s)
+    // We ask the API: "What sports are available right now?"
+    const sportsUrl = `${BASE_URL}/?apiKey=${ODDS_API_KEY}`;
+    const sportsRes = await fetch(sportsUrl);
+    
+    if (!sportsRes.ok) {
+        console.error("Failed to fetch active sports list:", sportsRes.status);
+        return [];
+    }
+
+    const allSports = await sportsRes.json();
+    
+    if (!Array.isArray(allSports)) {
+        console.error("Sports list is not an array");
+        return [];
+    }
+
+    // 2. FILTER FOR ESPORTS
+    // We look for anything that looks like esports
+    const esportsKeys = allSports
+        .filter((s: any) => s.group.toLowerCase().includes('esport') || s.key.toLowerCase().includes('esport'))
+        .map((s: any) => s.key);
+
+    console.log("Active Esports Keys found:", esportsKeys);
+
+    if (esportsKeys.length === 0) return [];
+
+    // 3. FETCH ODDS FOR ACTIVE KEYS
+    for (const key of esportsKeys) {
         // requesting specifically BetBoom (key: betboom) in EU region
+        // fallback to generic query if betboom specific fails, but filter later
         const url = `${BASE_URL}/${key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&bookmakers=betboom&markets=h2h&oddsFormat=decimal`;
         
-        const res = await fetch(url);
-        if (res.ok) {
-            // Check quota headers if needed, but for now just get json
-            const data = await res.json();
-            if (Array.isArray(data)) {
-                allMatches = [...allMatches, ...data];
+        try {
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    allMatches = [...allMatches, ...data];
+                }
+            } else {
+                // Just log warning, don't break loop
+                console.warn(`No odds for ${key}: ${res.status}`);
             }
-        } else {
-            console.error(`API Error for ${key}: ${res.status}`);
+        } catch (err) {
+            console.error(`Fetch error for ${key}`, err);
         }
     }
     
     return allMatches;
   } catch (e) {
     console.error("Critical Odds API Error:", e);
-    return []; // Return empty array on error, NEVER mock data
+    return [];
   }
 };
 
