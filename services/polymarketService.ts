@@ -1,68 +1,44 @@
 import { PolymarketEvent } from "../types";
 
 // CONSTANTS
-const INTERNAL_API_URL = "/api/poly/events"; // Works on Vercel/Netlify via rewrites
+const INTERNAL_API_URL = "/api/poly/events"; 
 const REAL_API_URL = "https://gamma-api.polymarket.com/events";
 
 export const fetchTopMarkets = async (): Promise<{ data: PolymarketEvent[], source: string }> => {
-  const polyKey = process.env.POLYMARKET_KEY || "";
   
-  // Headers for better rate limits / access
-  const headers: Record<string, string> = {};
-  if (polyKey && !polyKey.includes('undefined')) {
-      // Gamma API uses query params or basic auth usually, but sometimes headers help
-      // We will rely mostly on the proxy, but passing it doesn't hurt.
-  }
+  const params = new URLSearchParams({
+      limit: '50',
+      active: 'true',
+      closed: 'false',
+      sort: 'liquidity', 
+  }).toString();
 
-  // 1. TRY INTERNAL PROXY (Netlify/Vercel)
+  // AUTH HEADER
+  const headers = {
+      'Content-Type': 'application/json',
+      // Using the provided private key (UUID format)
+      'Authorization': `Bearer ${process.env.POLYMARKET_KEY}` 
+  };
+
+  // 1. TRY INTERNAL PROXY (Netlify/Vite)
   try {
-    const params = new URLSearchParams({
-        limit: '20',
-        active: 'true',
-        closed: 'false',
-        sort: 'volume',
-        order: 'desc'
-    }).toString();
-    
-    // Attempt fetch via our local proxy (configured in netlify.toml / vercel.json)
-    const response = await fetch(`${INTERNAL_API_URL}?${params}`);
-    
-    if (response.ok) {
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-            const data = await response.json();
-            if (Array.isArray(data)) {
-                return { data: mapData(data), source: 'Gamma API (Secure Tunnel)' };
-            }
-        }
-    }
-  } catch (e) {
-      // Internal proxy failed
-      console.warn("Proxy attempt 1 failed", e);
-  }
-
-  // 2. TRY DIRECT (Only works if user has CORS plugin or if API allows it temporarily)
-  try {
-      const params = new URLSearchParams({
-        limit: '20',
-        active: 'true',
-        closed: 'false',
-        sort: 'volume',
-        order: 'desc'
-    }).toString();
-
-    const response = await fetch(`${REAL_API_URL}?${params}`);
+    const response = await fetch(`${INTERNAL_API_URL}?${params}`, { headers });
     if (response.ok) {
         const data = await response.json();
-        return { data: mapData(data), source: 'Direct Connection' };
+        if (Array.isArray(data)) {
+            return { data: mapData(data), source: 'Gamma API (Authenticated)' };
+        }
+    } else {
+        console.error("Proxy Auth Error Status:", response.status);
     }
   } catch (e) {
-     // Direct failed
+      console.warn("Proxy attempt failed", e);
   }
 
-  // 3. TRY EXTERNAL PROXY (Last Resort)
+  // 2. TRY EXTERNAL PROXY (Backup - headers might be stripped by AllOrigins, but worth a try)
   try {
-      const targetUrl = `${REAL_API_URL}?limit=20&active=true&closed=false&sort=volume&order=desc`;
+      const targetUrl = `${REAL_API_URL}?${params}`;
+      // Note: AllOrigins doesn't forward custom headers, so this is a fallback to public
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
       const response = await fetch(proxyUrl);
       if (response.ok) {
@@ -70,24 +46,35 @@ export const fetchTopMarkets = async (): Promise<{ data: PolymarketEvent[], sour
           if (wrapper.contents) {
               const parsed = JSON.parse(wrapper.contents);
               if (Array.isArray(parsed)) {
-                  return { data: mapData(parsed), source: 'Public Relay (Live)' };
+                  return { data: mapData(parsed), source: 'Public Relay (Backup)' };
               }
           }
       }
   } catch (e) {
-      // External proxy failed
+      console.warn("External proxy failed", e);
   }
 
-  // If we reach here, connection failed completely.
   return { 
       data: [], 
-      source: "Connection Failed (CORS/Network Blocked)" 
+      source: "Connection Failed. Check network." 
   };
 };
 
 const mapData = (rawData: any[]): PolymarketEvent[] => {
-  return rawData.map((event: any) => {
+  const now = new Date();
+
+  const processed = rawData.map((event: any) => {
       if (!event || !event.markets) return null;
+
+      if (event.endDate) {
+          const end = new Date(event.endDate);
+          if (end < now) return null;
+      }
+
+      // Safe Tag Parsing
+      const tags = Array.isArray(event.tags) 
+          ? event.tags.map((t: any) => t.label || t.name || "").filter((t: string) => t)
+          : [];
 
       const markets = (event.markets || []).map((m: any) => {
         let price = 0;
@@ -96,9 +83,15 @@ const mapData = (rawData: any[]): PolymarketEvent[] => {
                 const prices = typeof m.outcomePrices === 'string' 
                     ? JSON.parse(m.outcomePrices) 
                     : m.outcomePrices;
-                price = prices.length > 0 ? Number(prices[0]) : 0;
+                
+                if (Array.isArray(prices) && prices.length > 0) {
+                    price = parseFloat(prices[0]);
+                }
             }
-        } catch (e) { }
+        } catch (e) { 
+            console.error("Price parse error", e);
+        }
+        if (isNaN(price)) price = 0;
 
         return {
             id: m.id,
@@ -116,14 +109,19 @@ const mapData = (rawData: any[]): PolymarketEvent[] => {
         slug: event.slug || "",
         title: event.title,
         description: event.description || "",
+        createdAt: event.createdAt || event.startDate || new Date().toISOString(),
         startDate: event.startDate,
         endDate: event.endDate,
         volume: Number(event.volume) || 0,
         liquidity: Number(event.liquidity) || 0,
         image: event.image,
-        markets: markets
+        markets: markets,
+        tags: tags
       };
-    }).filter((e: any) => e !== null);
+    }).filter((e: any) => e !== null) as PolymarketEvent[];
+
+    // Default sort: Liquidity high to low
+    return processed.sort((a, b) => b.liquidity - a.liquidity);
 }
 
 export const getMarketUrl = (slug: string) => `https://polymarket.com/event/${slug}`;

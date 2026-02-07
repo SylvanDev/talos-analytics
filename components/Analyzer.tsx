@@ -5,9 +5,12 @@ import { Loader2, BrainCircuit, Search, ShieldCheck, TrendingUp, AlertTriangle, 
 
 interface AnalyzerProps {
   onAddAnalysis: (result: AnalysisResult) => void;
+  initialTitle?: string;
+  initialPrice?: string;
+  initialDescription?: string;
 }
 
-export const Analyzer: React.FC<AnalyzerProps> = ({ onAddAnalysis }) => {
+export const Analyzer: React.FC<AnalyzerProps> = ({ onAddAnalysis, initialTitle, initialPrice, initialDescription }) => {
   const [marketText, setMarketText] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('0.50');
@@ -15,6 +18,7 @@ export const Analyzer: React.FC<AnalyzerProps> = ({ onAddAnalysis }) => {
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [result, setResult] = useState<AnalysisResult | null>(null);
 
+  // AUTO-RUN LOGIC: If props change (user clicked "Analyze" in feed), populate AND run.
   useEffect(() => {
     const key = process.env.API_KEY;
     if (!key || key.length === 0 || key.includes('undefined')) {
@@ -22,13 +26,25 @@ export const Analyzer: React.FC<AnalyzerProps> = ({ onAddAnalysis }) => {
     }
   }, []);
 
-  const handleAnalyze = async () => {
-    if (!marketText) return;
+  useEffect(() => {
+      if (initialTitle) {
+          setMarketText(initialTitle);
+          if (initialPrice) setPrice(initialPrice);
+          if (initialDescription) setDescription(initialDescription);
+          
+          // AUTO EXECUTE if we have a title coming from the feed
+          if (!isAnalyzing && !result) {
+              runAnalysis(initialTitle, initialDescription || "", parseFloat(initialPrice || "0.50"));
+          }
+      }
+  }, [initialTitle, initialPrice]); // Dependencies: only when these props change
+
+  const runAnalysis = async (t: string, d: string, p: number) => {
     setIsAnalyzing(true);
     setResult(null); 
     
     try {
-      const res = await analyzeMarket(marketText, description || "No description provided", parseFloat(price));
+      const res = await analyzeMarket(t, d, p);
       setResult(res);
       onAddAnalysis(res);
     } catch (e) {
@@ -36,6 +52,11 @@ export const Analyzer: React.FC<AnalyzerProps> = ({ onAddAnalysis }) => {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleManualAnalyze = () => {
+      if (!marketText) return;
+      runAnalysis(marketText, description, parseFloat(price));
   };
 
   return (
@@ -106,7 +127,7 @@ export const Analyzer: React.FC<AnalyzerProps> = ({ onAddAnalysis }) => {
                 )}
 
                 <button
-                    onClick={handleAnalyze}
+                    onClick={handleManualAnalyze}
                     disabled={isAnalyzing}
                     className={`mt-4 w-full py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-xl transition-all ${
                         isAnalyzing ? 'bg-slate-800 text-slate-500' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white'

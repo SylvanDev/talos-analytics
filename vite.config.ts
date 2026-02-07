@@ -5,16 +5,18 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
 
-  // 1. Prioritize System Env (Vercel/Netlify Dashboard)
-  // 2. Fallback to .env file
-  // 3. Fallback to the keys provided by user (Hard Fix)
-  const apiKey = process.env.API_KEY || env.API_KEY || "AIzaSyBQzXmtickLAIwe9xZF8UEyqZBUV-7nI-4";
-  const polyKey = process.env.POLYMARKET_KEY || env.POLYMARKET_KEY || "019c309e-c212-7ce7-9c79-3c4770fa5185";
+  // Polymarket Private Key (Authorized for Grant Demo)
+  const polyKey = "019c309e-c212-7ce7-9c79-3c4770fa5185";
+
+  // FIX: User has 'APY_KEY' in Netlify, so we check both API_KEY and APY_KEY
+  const geminiKey = env.API_KEY || env.APY_KEY;
 
   return {
     plugins: [react()],
     define: {
-      'process.env.API_KEY': JSON.stringify(apiKey),
+      // Gemini API Key: Loaded from environment variables only
+      'process.env.API_KEY': JSON.stringify(geminiKey),
+      // Polymarket Key: Injected for the private proxy
       'process.env.POLYMARKET_KEY': JSON.stringify(polyKey)
     },
     server: {

@@ -7,11 +7,10 @@ const getClient = () => {
     return new GoogleGenAI({ apiKey: key });
 };
 
-// --- CORE ANALYZER (EXISTING) ---
+// --- CORE ANALYZER (UPDATED WITH SEARCH) ---
 export const analyzeMarket = async (title: string, description: string, price: number): Promise<AnalysisResult> => {
   const ai = getClient();
   
-  // 0. Pre-flight Check
   if (!ai) {
       return {
           id: "err-auth",
@@ -32,41 +31,33 @@ export const analyzeMarket = async (title: string, description: string, price: n
 
   // 1. Define prompts for TALOS 2.0 (Hybrid Engine)
   const systemPrompt = `
-  IDENTITY: You are TALOS, a dual-engine prediction market analyzer. You have two personalities running in parallel:
-  1. THE AUDITOR (Paranoid): Checks for scams, wording traps, and ambiguity.
-  2. THE TRADER (Aggressive): Calculates Expected Value (EV), compares market odds vs reality, and looks for profit.
+  IDENTITY: You are TALOS, a professional prediction market analyst.
+  
+  CRITICAL INSTRUCTION: You MUST use the 'googleSearch' tool to verify the latest news about this event.
+  Do not hallucinate. If search returns nothing, admit it.
 
   CONTEXT: 
   Market: "${title}"
   Current Price: ${(price * 100).toFixed(1)} cents (Implied Probability: ${(price * 100).toFixed(1)}%)
 
   TASK:
-  Perform a dual analysis.
-  
-  A) SAFETY CHECK:
-  - Is the resolution source ambiguous? 
-  - Are there "gotcha" clauses?
-  - If risks exist, set riskLevel to HIGH.
-
-  B) ALPHA CHECK (PROFIT):
-  - Based on general knowledge, logic, and recent news trends, what is the *real* probability of this happening?
-  - Compare Real Prob vs Market Price.
-  - If Real Prob > Market Price (+Margin), it's a BUY.
-  - If Real Prob < Market Price, it's a SELL (No).
+  1. SEARCH: Look for recent news (last 24-48h) related to this event.
+  2. SAFETY CHECK: Check if the market wording is ambiguous or a known scam format.
+  3. ALPHA CHECK: Compare the real-world probability (based on news) vs the Market Price.
 
   OUTPUT JSON STRICTLY:
   {
-    "estimatedProbability": 0.0-1.0, // Your calculated probability
+    "estimatedProbability": 0.0-1.0, // Your calculated probability based on NEWS
     "alphaVerdict": "BUY" | "SELL" | "NO ACTION",
     "profitPotential": "string", // e.g. "+20% ROI" or "Negative EV"
     "evScore": 0-100, // 0=Bad Bet, 100=Free Money
-    "reasoning": "Why is this a good/bad financial bet?",
+    "reasoning": "Cite specific news from your search. Why is the price wrong?",
     
     "riskLevel": "Safe" | "Low Risk" | "Medium Risk" | "High Risk" | "Scam / Ambiguous",
     "safetyVerdict": "CLEAN" | "SUSPICIOUS" | "TRAP",
-    "safetyNotes": "Specific comments on rules/wording/scam risks.",
+    "safetyNotes": "Any warnings about the rules or lack of info.",
     
-    "summary": "Combined 5-word verdict (e.g. 'Safe High-Yield Opportunity' or 'Risky Trap - Avoid')."
+    "summary": "Short 5-word verdict."
   }
   `;
 
@@ -77,7 +68,7 @@ export const analyzeMarket = async (title: string, description: string, price: n
   Current Price: ${price}
   `;
 
-  // 2. Helper to run generation
+  // 2. Helper to run generation with TOOLS
   const runInference = async (modelName: string) => {
     const response = await ai.models.generateContent({
       model: modelName,
@@ -85,6 +76,7 @@ export const analyzeMarket = async (title: string, description: string, price: n
       config: { 
         systemInstruction: systemPrompt, 
         responseMimeType: "application/json",
+        tools: [{googleSearch: {}}] // ENABLE INTERNET ACCESS
       },
     });
 
@@ -115,12 +107,13 @@ export const analyzeMarket = async (title: string, description: string, price: n
   };
 
   try {
+    // Search is only available on Pro models generally, or robust Flash models.
+    // Using gemini-2.0-flash-exp or similar usually supports search best, but per rules:
+    // We try Pro first for deep reasoning.
     try {
-        // Try Pro for better reasoning
         return await runInference("gemini-3-pro-preview");
     } catch (primaryError) {
-        // Fallback to Flash
-        console.warn("Switching to Flash model...");
+        console.warn("Pro model failed, switching to Flash...", primaryError);
         return await runInference("gemini-3-flash-preview");
     }
 
@@ -138,33 +131,18 @@ export const analyzeMarket = async (title: string, description: string, price: n
       riskLevel: RiskLevel.HIGH,
       safetyVerdict: 'TRAP',
       summary: "System Error",
-      reasoning: "AI Unreachable.",
+      reasoning: "AI Unreachable or Search Failed.",
       safetyNotes: "Check connection."
     };
   }
 };
 
-// --- NEW: EVENT IDENTITY MATCHER (THE "MAPPING" BRAIN) ---
 export const verifyEventIdentity = async (polyName: string, bookieName: string): Promise<EventMatchResult> => {
+    // Existing logic...
     const ai = getClient();
     if (!ai) return { isMatch: false, confidence: 0, reason: "No API Key" };
 
-    const prompt = `
-    Task: Event Identity Verification (Arbitrage Mapping)
-    
-    Source A (Polymarket): "${polyName}"
-    Source B (Bookmaker Scrape): "${bookieName}"
-
-    Are these strictly the same real-world sporting or political event? 
-    Ignore minor spelling differences or formatting (e.g. "Man City" vs "Manchester City").
-    
-    Return JSON:
-    {
-        "match": boolean,
-        "confidence": number (0.0 - 1.0),
-        "reason": "Short explanation"
-    }
-    `;
+    const prompt = `Match these events: "${polyName}" vs "${bookieName}". JSON { match: bool, confidence: float, reason: string }`;
 
     try {
         const response = await ai.models.generateContent({
@@ -172,17 +150,10 @@ export const verifyEventIdentity = async (polyName: string, bookieName: string):
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
-        
         const text = response.text?.replace(/```json\n?|\n?```/g, "").trim() || "{}";
         const data = JSON.parse(text);
-
-        return {
-            isMatch: data.match,
-            confidence: data.confidence,
-            reason: data.reason
-        };
+        return { isMatch: data.match, confidence: data.confidence, reason: data.reason };
     } catch (e) {
-        console.error("Mapping failed", e);
         return { isMatch: false, confidence: 0, reason: "AI Error" };
     }
 };

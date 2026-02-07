@@ -5,8 +5,9 @@ import { ReportManager } from './components/ReportManager';
 import { LandingPage } from './components/LandingPage';
 import { LiveScanner } from './components/LiveScanner';
 import { TerminalConsole } from './components/Terminal';
-import { MarketScanner } from './components/MarketScanner'; // New Real Scanner
-import { LayoutDashboard, Search, BrainCircuit, FileText, LogOut, Wallet, UserCircle, Activity, Terminal, Table2 } from 'lucide-react';
+import { MarketScanner } from './components/MarketScanner'; 
+import { ArbitrageScanner } from './components/ArbitrageScanner'; // NEW
+import { LayoutDashboard, Search, BrainCircuit, FileText, LogOut, Wallet, UserCircle, Activity, Terminal, Table2, Zap } from 'lucide-react';
 import { AnalysisResult } from './types';
 
 enum Tab {
@@ -15,7 +16,8 @@ enum Tab {
   FEED = 'feed',
   ANALYZER = 'analyzer',
   CONSOLE = 'console',
-  TABLE = 'table' // Renamed logic to Table/Scanner
+  TABLE = 'table',
+  ARBITRAGE = 'arbitrage' // NEW
 }
 
 // User's specific builder ID for display
@@ -31,6 +33,9 @@ const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
   const [reports, setReports] = useState<AnalysisResult[]>([]);
+
+  // State to pass data from Feed to Analyzer
+  const [analyzerInitData, setAnalyzerInitData] = useState<{title: string, price: string, description: string} | null>(null);
 
   const connectWallet = async () => {
     setIsConnecting(true);
@@ -60,6 +65,15 @@ const App: React.FC = () => {
   const handleAddAnalysis = (result: AnalysisResult) => {
     setReports(prev => [result, ...prev]);
     setActiveTab(Tab.SCANNER); 
+  };
+
+  const handleAnalyzeFromFeed = (title: string, price: number, description: string) => {
+      setAnalyzerInitData({
+          title,
+          price: price.toFixed(2),
+          description
+      });
+      setActiveTab(Tab.ANALYZER);
   };
 
   if (!isAuthenticated) {
@@ -99,11 +113,18 @@ const App: React.FC = () => {
             icon={<Activity />}
             label="Live Markets"
           />
+          {/* NEW ARBITRAGE BUTTON */}
+          <NavButton 
+            active={activeTab === Tab.ARBITRAGE} 
+            onClick={() => setActiveTab(Tab.ARBITRAGE)}
+            icon={<Zap className="text-yellow-400" />}
+            label="Arbitrage Scanner"
+          />
           <NavButton 
             active={activeTab === Tab.TABLE} 
             onClick={() => setActiveTab(Tab.TABLE)}
             icon={<Table2 />}
-            label="Scanner Table"
+            label="Liquidity Grid"
           />
           <NavButton 
             active={activeTab === Tab.ANALYZER} 
@@ -173,7 +194,8 @@ const App: React.FC = () => {
             {activeTab === Tab.SCANNER && 'Generated Signals'}
             {activeTab === Tab.FEED && 'Polymarket Real-Time Feed'}
             {activeTab === Tab.CONSOLE && 'System Logs / Diagnostics'}
-            {activeTab === Tab.TABLE && 'Market Scanner (Liquidity & Spread)'}
+            {activeTab === Tab.TABLE && 'Market Scanner (Internal Liquidity)'}
+            {activeTab === Tab.ARBITRAGE && 'Arbitrage Scanner (Polymarket vs Bookies)'}
           </h2>
           <div className="flex items-center gap-4">
              <div className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold font-mono flex items-center gap-2">
@@ -187,11 +209,19 @@ const App: React.FC = () => {
         <div className="flex-grow overflow-hidden p-6 relative z-10">
           <div className="h-full overflow-y-auto custom-scrollbar">
             {activeTab === Tab.DASHBOARD && <Dashboard reports={reports} />}
-            {activeTab === Tab.ANALYZER && <Analyzer onAddAnalysis={handleAddAnalysis} />}
+            {activeTab === Tab.ANALYZER && (
+                <Analyzer 
+                    onAddAnalysis={handleAddAnalysis} 
+                    initialTitle={analyzerInitData?.title}
+                    initialPrice={analyzerInitData?.price}
+                    initialDescription={analyzerInitData?.description}
+                />
+            )}
             {activeTab === Tab.SCANNER && <ReportManager reports={reports} />}
-            {activeTab === Tab.FEED && <LiveScanner campaignName="" />}
+            {activeTab === Tab.FEED && <LiveScanner campaignName="" onAnalyze={handleAnalyzeFromFeed} />}
             {activeTab === Tab.CONSOLE && <TerminalConsole />}
             {activeTab === Tab.TABLE && <MarketScanner />}
+            {activeTab === Tab.ARBITRAGE && <ArbitrageScanner />}
           </div>
         </div>
       </main>

@@ -12,12 +12,14 @@ export interface PolymarketEvent {
   slug: string;
   title: string;
   description: string;
+  createdAt: string;
   startDate: string;
   endDate: string;
   volume: number;
   liquidity: number;
   markets: MarketOutcome[];
   image?: string;
+  tags: string[];
 }
 
 export interface MarketOutcome {
@@ -29,54 +31,70 @@ export interface MarketOutcome {
 
 export interface ArbitrageOpportunity {
   id: string;
-  eventName: string;
-  marketSlug: string;
   
-  // Side A: Polymarket
-  polyOutcome: string; // e.g., "Yes"
-  polyPrice: number;
-  polyOdds: number; // 1 / price
-
-  // Side B: Bookmaker (Simulated for Demo)
-  bookieName: string; // "BetBoom", "Pinnacle"
-  bookieOutcome: string; // e.g., "Team B Win"
-  bookieOdds: number;
-
+  // Polymarket side
+  polymarketEvent: string;
+  polymarketOutcome: string;
+  polymarketPrice: number;
+  polymarketUrl: string;
+  
+  // Bookmaker side
+  bookmakerName: string;
+  bookmakerEvent: string;
+  bookmakerTeam: string;
+  bookmakerOdds: number;
+  bookmakerUrl: string;
+  
   // Math
-  arbPercent: number; // Positive = Profit, Negative = Loss
-  expectedProfit: string; // "$4.20 on $100"
+  profitMargin: number; // e.g. 0.035 for 3.5%
+  totalImplied: number;
+  
+  // Stakes ($100 bankroll)
+  stakePoly: number;
+  stakeBookie: number;
+  expectedProfit: number;
+  
+  confidence: number; // AI Match confidence
   timestamp: string;
+}
+
+export interface BookmakerMatch {
+  id: string;
+  sport_key: string;
+  sport_title: string;
+  commence_time: string;
+  home_team: string;
+  away_team: string;
+  bookmakers: {
+    key: string;
+    title: string;
+    last_update: string;
+    markets: {
+      key: string;
+      outcomes: {
+        name: string;
+        price: number;
+      }[];
+    }[];
+  }[];
 }
 
 export interface AnalysisResult {
   id: string;
   marketTitle: string;
   timestamp: string;
-  
-  // SECTION 1: ALPHA (Making Money)
-  evScore: number; // 0-100 (Profitability potential)
-  impliedProbability: number; // What the market says (price)
-  estimatedProbability: number; // What AI thinks is real
+  evScore: number; 
+  impliedProbability: number; 
+  estimatedProbability: number; 
   alphaVerdict: 'BUY' | 'SELL' | 'NO ACTION';
-  profitPotential: string; // e.g. "+35% ROI"
-  
-  // SECTION 2: SAFETY (Not Losing Money)
+  profitPotential: string; 
   riskLevel: RiskLevel;
   safetyVerdict: 'CLEAN' | 'SUSPICIOUS' | 'TRAP';
-  
-  // Content
   summary: string;
-  reasoning: string; // The "Alpha" reasoning
-  safetyNotes: string; // The "Audit" reasoning
+  reasoning: string; 
+  safetyNotes: string; 
 }
 
-export interface ScanFilter {
-  minVolume: number;
-  tags: string[];
-  onlyActive: boolean;
-}
-
-// NEW: AI Matching Types
 export interface EventMatchResult {
   isMatch: boolean;
   confidence: number;
