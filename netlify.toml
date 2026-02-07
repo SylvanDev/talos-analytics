@@ -1,0 +1,17 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Proxy for Polymarket API (Solves CORS on Netlify)
+[[redirects]]
+  from = "/api/poly/*"
+  to = "https://gamma-api.polymarket.com/:splat"
+  status = 200
+  force = true
+  headers = {X-From = "Netlify Proxy"}
+
+# SPA Fallback (Must be last)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

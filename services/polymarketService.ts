@@ -1,12 +1,20 @@
 import { PolymarketEvent } from "../types";
 
 // CONSTANTS
-const INTERNAL_API_URL = "/api/poly/events"; // Works on Vercel & Local Vite
-const REAL_API_URL = "https://gamma-api.polymarket.com/events?limit=20&active=true&closed=false&sort=volume&order=desc";
+const INTERNAL_API_URL = "/api/poly/events"; // Works on Vercel/Netlify via rewrites
+const REAL_API_URL = "https://gamma-api.polymarket.com/events";
 
 export const fetchTopMarkets = async (): Promise<{ data: PolymarketEvent[], source: string }> => {
+  const polyKey = process.env.POLYMARKET_KEY || "";
   
-  // 1. TRY INTERNAL PROXY (Best for Vercel / Local)
+  // Headers for better rate limits / access
+  const headers: Record<string, string> = {};
+  if (polyKey && !polyKey.includes('undefined')) {
+      // Gamma API uses query params or basic auth usually, but sometimes headers help
+      // We will rely mostly on the proxy, but passing it doesn't hurt.
+  }
+
+  // 1. TRY INTERNAL PROXY (Netlify/Vercel)
   try {
     const params = new URLSearchParams({
         limit: '20',
@@ -16,22 +24,46 @@ export const fetchTopMarkets = async (): Promise<{ data: PolymarketEvent[], sour
         order: 'desc'
     }).toString();
     
-    // We try the relative path first. If running in Vercel, vercel.json handles this.
-    // If running locally, vite.config.ts handles this.
+    // Attempt fetch via our local proxy (configured in netlify.toml / vercel.json)
     const response = await fetch(`${INTERNAL_API_URL}?${params}`);
-    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-        const data = await response.json();
-        if (Array.isArray(data)) {
-            return { data: mapData(data), source: 'Gamma API (Secure Tunnel)' };
+    
+    if (response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            const data = await response.json();
+            if (Array.isArray(data)) {
+                return { data: mapData(data), source: 'Gamma API (Secure Tunnel)' };
+            }
         }
     }
   } catch (e) {
       // Internal proxy failed
+      console.warn("Proxy attempt 1 failed", e);
   }
 
-  // 2. TRY EXTERNAL PROXY (Fallback for some environments)
+  // 2. TRY DIRECT (Only works if user has CORS plugin or if API allows it temporarily)
   try {
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(REAL_API_URL)}`;
+      const params = new URLSearchParams({
+        limit: '20',
+        active: 'true',
+        closed: 'false',
+        sort: 'volume',
+        order: 'desc'
+    }).toString();
+
+    const response = await fetch(`${REAL_API_URL}?${params}`);
+    if (response.ok) {
+        const data = await response.json();
+        return { data: mapData(data), source: 'Direct Connection' };
+    }
+  } catch (e) {
+     // Direct failed
+  }
+
+  // 3. TRY EXTERNAL PROXY (Last Resort)
+  try {
+      const targetUrl = `${REAL_API_URL}?limit=20&active=true&closed=false&sort=volume&order=desc`;
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
       const response = await fetch(proxyUrl);
       if (response.ok) {
           const wrapper = await response.json();
