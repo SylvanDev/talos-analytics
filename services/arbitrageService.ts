@@ -52,14 +52,17 @@ export const findArbitrageOpportunities = async (
     
     const opportunities: ArbitrageOpportunity[] = [];
     
-    // A. Filter Polymarket for Esports
+    // A. Filter Polymarket for Esports (BROADER SEARCH)
+    // Polymarket tags are inconsistent, so we search strictly in title and tags with more keywords
+    const keywords = ['esport', 'csgo', 'cs:go', 'dota', 'lol', 'league of legends', 'counter-strike', 'valorant', 'gaming', 'fifa', 'call of duty'];
+    
     const esportsPoly = polymarketEvents.filter(e => {
-        const t = e.title.toLowerCase();
-        const tags = e.tags.join(' ').toLowerCase();
-        return tags.includes('esports') || tags.includes('csgo') || tags.includes('dota') || tags.includes('lol');
+        const text = (e.title + ' ' + e.tags.join(' ')).toLowerCase();
+        return keywords.some(k => text.includes(k));
     });
 
     // B. Fetch REAL Odds (BetBoom via API)
+    // This now fetches keys dynamically so no 404s
     const bookieMatches = await fetchEsportsOdds();
 
     console.log(`Scanning ${esportsPoly.length} Poly events against ${bookieMatches.length} BetBoom matches...`);
@@ -70,12 +73,20 @@ export const findArbitrageOpportunities = async (
 
         for (const bookieMatch of bookieMatches) {
             // Check Identity via Gemini
+            // We optimize simply by checking if one string contains another before paying for AI call
+            const polySimple = polyEvent.title.toLowerCase();
+            const bookieSimple = `${bookieMatch.home_team} ${bookieMatch.away_team}`.toLowerCase();
+            
+            // Heuristic pre-filter to save time
+            const isWorthChecking = polySimple.includes(bookieMatch.home_team.toLowerCase()) || polySimple.includes(bookieMatch.away_team.toLowerCase());
+            
+            if (!isWorthChecking) continue;
+
             const matchResult = await verifyEventIdentity(polyEvent.title, `${bookieMatch.home_team} vs ${bookieMatch.away_team}`);
             
             if (matchResult.isMatch && matchResult.confidence > 0.75) {
                 
                 // STRICT FILTER: We only care about BetBoom
-                // API was requested with &bookmakers=betboom, but we double check
                 const betBoom = bookieMatch.bookmakers.find(b => b.key === 'betboom' || b.title.toLowerCase().includes('betboom'));
                 
                 if (!betBoom) continue; // Skip if BetBoom has no odds for this match
@@ -107,7 +118,6 @@ export const findArbitrageOpportunities = async (
                          const bookieOdds = targetBookieOutcome.price;
                          const { profitMargin } = calculateArbProfit(polyOdds, bookieOdds);
 
-                         // Log everything found, even negative EV, so user knows it's scanning
                          const stakes = calculateStakes(100, polyOdds, bookieOdds);
                          
                          opportunities.push({
@@ -117,7 +127,7 @@ export const findArbitrageOpportunities = async (
                              polymarketPrice: polyPrice,
                              polymarketUrl: `https://polymarket.com/event/${polyEvent.slug}`,
                              
-                             bookmakerName: "BetBoom", // Explicitly BetBoom
+                             bookmakerName: "BetBoom", 
                              bookmakerEvent: `${bookieMatch.home_team} vs ${bookieMatch.away_team}`,
                              bookmakerTeam: targetBookieOutcome.name,
                              bookmakerOdds: bookieOdds,
