@@ -12,12 +12,29 @@ const TEAM_ALIASES: Record<string, string> = {
     'virtus.pro': 'vp',
     'vp': 'virtus.pro',
     'navi': 'natus vincere',
-    'natus vincere': 'navi'
+    'natus vincere': 'navi',
+    'falcons': 'team falcons',
+    'gg': 'gaimin',
+    'betboom': 'betboom team',
+    'bb': 'betboom'
 };
 
 const normalizeTeamName = (name: string): string => {
-    const lower = name.toLowerCase().trim();
+    let lower = name.toLowerCase().trim();
+    // Remove common prefixes/suffixes
+    lower = lower.replace(/\besports\b/g, '').replace(/\bteam\b/g, '').trim();
     return TEAM_ALIASES[lower] || lower;
+};
+
+// Helper to check token intersection
+const hasTokenOverlap = (str1: string, str2: string): boolean => {
+    const tokens1 = normalizeTeamName(str1).split(/[\s\-_]+/);
+    const tokens2 = normalizeTeamName(str2).split(/[\s\-_]+/);
+    
+    // Check if any significant token (len > 2) matches
+    return tokens1.some(t1 => 
+        t1.length > 2 && tokens2.some(t2 => t2.includes(t1) || t1.includes(t2))
+    );
 };
 
 // 1. Internal Scan (Polymarket Only - Spread)
@@ -71,11 +88,12 @@ export const findArbitrageOpportunities = async (
     const opportunities: ArbitrageOpportunity[] = [];
     
     // A. Filter Polymarket Events
-    // Expanded keywords including specific team names if needed
+    // Relaxed keywords to catch more potential events
     const keywords = [
         'esport', 'csgo', 'dota', 'lol', 'valorant', 
-        'soccer', 'football', 'premier league',
-        'nigma', 'z10', 'betboom', 'spirit', 'g2' // Add popular team names to catch generic titles
+        'soccer', 'football', 'premier', 'league',
+        'nigma', 'z10', 'betboom', 'spirit', 'g2', 'falcons', 'liquid', 'og',
+        'vs', 'winner', 'match' // Catch generic titles like "Winner of X vs Y"
     ];
     
     const targetPolyEvents = polymarketEvents.filter(e => {
@@ -94,33 +112,39 @@ export const findArbitrageOpportunities = async (
         for (const bookieMatch of bookieMatches) {
             // Check Identity via Gemini
             
-            // 1. Heuristic Pre-filter (Smart Match)
-            const polyTitleNorm = normalizeTeamName(polyEvent.title);
-            const homeNorm = normalizeTeamName(bookieMatch.home_team);
-            const awayNorm = normalizeTeamName(bookieMatch.away_team);
-            
-            // Check if team names appear in title (handling aliases)
-            const isPotentialMatch = 
-                (polyTitleNorm.includes(homeNorm) || polyTitleNorm.includes(awayNorm));
-            
-            if (!isPotentialMatch) continue;
+            // 1. Heuristic Pre-filter (Greedy Token Match)
+            // Does ANY word from the Poly title appear in the Bookie teams?
+            const polyTokens = polyEvent.title.toLowerCase();
+            const homeTokens = bookieMatch.home_team.toLowerCase();
+            const awayTokens = bookieMatch.away_team.toLowerCase();
 
-            // 2. AI Verification
+            const matchHome = hasTokenOverlap(polyEvent.title, bookieMatch.home_team);
+            const matchAway = hasTokenOverlap(polyEvent.title, bookieMatch.away_team);
+            
+            // If neither team name has ANY overlap with the title, skip.
+            if (!matchHome && !matchAway) continue;
+
+            console.log(`Potential Match: [${polyEvent.title}] vs [${bookieMatch.home_team} - ${bookieMatch.away_team}]`);
+
+            // 2. AI Verification (Lowered threshold to 0.50 to see more results)
             const matchResult = await verifyEventIdentity(polyEvent.title, `${bookieMatch.home_team} vs ${bookieMatch.away_team}`);
             
-            if (matchResult.isMatch && matchResult.confidence > 0.65) {
+            // Fallback: If AI fails but we had a strong string match, include it with low confidence
+            let isVerified = matchResult.isMatch && matchResult.confidence > 0.5;
+            if (!matchResult.isMatch && (matchHome && matchAway)) {
+                // If both team names were found in the title via string match, force include it
+                isVerified = true;
+                matchResult.confidence = 0.45; // Low confidence flag
+            }
+
+            if (isVerified) {
                 
-                // 3. Find BetBoom (or fallback to generic for demo)
-                // We fetched ALL bookies, now we specifically look for BetBoom.
-                // If BetBoom is missing, we check if ANY bookie has good odds (as fallback)
+                // 3. Find BetBoom (or fallback)
                 let bookie = bookieMatch.bookmakers.find(b => 
                     b.key.toLowerCase().includes('betboom') || 
                     b.title.toLowerCase().includes('betboom')
                 );
 
-                // DEMO FALLBACK: If BetBoom specifically isn't in the feed for this match,
-                // but the match exists, use the first available bookie but label it "BetBoom (Ref)"
-                // This ensures you see the match even if BetBoom's specific feed is temporarily down in the API.
                 if (!bookie && bookieMatch.bookmakers.length > 0) {
                     bookie = bookieMatch.bookmakers[0];
                 }
@@ -144,12 +168,17 @@ export const findArbitrageOpportunities = async (
                     let targetBookieOutcome = null;
 
                     // Match Logic: Check aliases too
-                    const outcomeNorm = normalizeTeamName(outcomeName);
+                    // We need to know WHICH team this Poly outcome represents
+                    const isTeamA = hasTokenOverlap(outcomeName, teamA);
+                    const isTeamB = hasTokenOverlap(outcomeName, teamB);
+
+                    // If Poly is Team A, we look for Team B on Bookie (Hedge)
+                    // If Poly is Team B, we look for Team A on Bookie (Hedge)
                     
-                    if (outcomeNorm.includes(normalizeTeamName(teamA))) {
-                        targetBookieOutcome = marketH2H.outcomes.find(o => normalizeTeamName(o.name) === normalizeTeamName(teamB));
-                    } else if (outcomeNorm.includes(normalizeTeamName(teamB))) {
-                        targetBookieOutcome = marketH2H.outcomes.find(o => normalizeTeamName(o.name) === normalizeTeamName(teamA));
+                    if (isTeamA) {
+                        targetBookieOutcome = marketH2H.outcomes.find(o => hasTokenOverlap(o.name, teamB));
+                    } else if (isTeamB) {
+                        targetBookieOutcome = marketH2H.outcomes.find(o => hasTokenOverlap(o.name, teamA));
                     }
 
                     if (targetBookieOutcome) {
@@ -158,7 +187,7 @@ export const findArbitrageOpportunities = async (
                          const stakes = calculateStakes(100, polyOdds, bookieOdds);
                          
                          opportunities.push({
-                             id: `${polyEvent.id}-${bookieMatch.id}`,
+                             id: `${polyEvent.id}-${bookieMatch.id}-${market.id}`,
                              polymarketEvent: polyEvent.title,
                              polymarketOutcome: market.outcome === "Yes" ? "Yes" : market.outcome,
                              polymarketPrice: polyPrice,
