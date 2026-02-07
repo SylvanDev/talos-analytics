@@ -1,89 +1,77 @@
 import { PolymarketEvent } from "../types";
 
-const GAMMA_API_URL = "https://gamma-api.polymarket.com";
-
-// Strategy Interface
-interface FetchStrategy {
-  name: string;
-  getUrl: (params: string) => string;
-}
-
-// 1. Cleanest way (Works on Vercel Prod & Properly configued Local)
-const STRATEGY_INTERNAL: FetchStrategy = {
-  name: "Secure Gateway (Vercel)",
-  getUrl: (params) => `/api/poly/events?${params}`
-};
-
-// 2. Backup for local dev / web containers
-const STRATEGY_CORSPROXY: FetchStrategy = {
-  name: "Public Proxy A",
-  getUrl: (params) => `https://corsproxy.io/?${encodeURIComponent(`${GAMMA_API_URL}/events?${params}`)}`
-};
-
-// 3. Last Resort
-const STRATEGY_ALLORIGINS: FetchStrategy = {
-  name: "Public Proxy B",
-  getUrl: (params) => `https://api.allorigins.win/raw?url=${encodeURIComponent(`${GAMMA_API_URL}/events?${params}`)}`
-};
-
-const STRATEGIES = [STRATEGY_INTERNAL, STRATEGY_CORSPROXY, STRATEGY_ALLORIGINS];
+// CONSTANTS
+const INTERNAL_API_URL = "/api/poly/events"; // Works on Vercel & Local Vite
+const REAL_API_URL = "https://gamma-api.polymarket.com/events?limit=20&active=true&closed=false&sort=volume&order=desc";
 
 export const fetchTopMarkets = async (): Promise<{ data: PolymarketEvent[], source: string }> => {
-  const params = new URLSearchParams({
-    limit: '20',
-    active: 'true',
-    closed: 'false',
-    sort: 'volume',
-    order: 'desc',
-    offset: '0'
-  }).toString();
-
-  for (const strategy of STRATEGIES) {
-    try {
-      console.log(`Attempting connection via ${strategy.name}...`);
-      
-      const response = await fetch(strategy.getUrl(params), {
-        // Some public proxies hate custom headers, Vercel needs standard handling
-        headers: strategy.name.includes('Proxy') ? undefined : { 'Accept': 'application/json' }
-      });
-
-      if (!response.ok) continue;
-
-      const rawData = await response.json();
-
-      // Validate Data integrity
-      if (Array.isArray(rawData)) {
-         console.log(`Connected via ${strategy.name}`);
-         return {
-           source: strategy.name,
-           data: mapData(rawData)
-         };
-      }
-    } catch (e) {
-      console.warn(`Strategy ${strategy.name} failed.`);
+  
+  // 1. TRY INTERNAL PROXY (Best for Vercel / Local)
+  try {
+    const params = new URLSearchParams({
+        limit: '20',
+        active: 'true',
+        closed: 'false',
+        sort: 'volume',
+        order: 'desc'
+    }).toString();
+    
+    // We try the relative path first. If running in Vercel, vercel.json handles this.
+    // If running locally, vite.config.ts handles this.
+    const response = await fetch(`${INTERNAL_API_URL}?${params}`);
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+        const data = await response.json();
+        if (Array.isArray(data)) {
+            return { data: mapData(data), source: 'Gamma API (Secure Tunnel)' };
+        }
     }
+  } catch (e) {
+      // Internal proxy failed
   }
 
-  console.error("All connection strategies exhausted.");
-  return { data: [], source: 'Disconnected' };
+  // 2. TRY EXTERNAL PROXY (Fallback for some environments)
+  try {
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(REAL_API_URL)}`;
+      const response = await fetch(proxyUrl);
+      if (response.ok) {
+          const wrapper = await response.json();
+          if (wrapper.contents) {
+              const parsed = JSON.parse(wrapper.contents);
+              if (Array.isArray(parsed)) {
+                  return { data: mapData(parsed), source: 'Public Relay (Live)' };
+              }
+          }
+      }
+  } catch (e) {
+      // External proxy failed
+  }
+
+  // If we reach here, connection failed completely.
+  return { 
+      data: [], 
+      source: "Connection Failed (CORS/Network Blocked)" 
+  };
 };
 
-// Helper to clean up data
 const mapData = (rawData: any[]): PolymarketEvent[] => {
   return rawData.map((event: any) => {
+      if (!event || !event.markets) return null;
+
       const markets = (event.markets || []).map((m: any) => {
-        let price = 0.5;
+        let price = 0;
         try {
             if (m.outcomePrices) {
-                const prices = JSON.parse(m.outcomePrices);
-                price = prices.length > 0 ? Number(prices[0]) : 0.5;
+                const prices = typeof m.outcomePrices === 'string' 
+                    ? JSON.parse(m.outcomePrices) 
+                    : m.outcomePrices;
+                price = prices.length > 0 ? Number(prices[0]) : 0;
             }
         } catch (e) { }
 
         return {
             id: m.id,
-            question: m.question,
-            outcome: m.groupItemTitle || m.outcome || "Yes", 
+            question: m.question || event.title,
+            outcome: m.groupItemTitle || m.outcome || "Outcome", 
             currentPrice: price
         };
       }).filter((m: any) => m.question);
@@ -93,9 +81,9 @@ const mapData = (rawData: any[]): PolymarketEvent[] => {
       return {
         id: event.id,
         ticker: event.ticker || "MKT",
-        slug: event.slug,
+        slug: event.slug || "",
         title: event.title,
-        description: event.description || "No description provided.",
+        description: event.description || "",
         startDate: event.startDate,
         endDate: event.endDate,
         volume: Number(event.volume) || 0,

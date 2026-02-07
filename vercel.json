@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/api/poly/(.*)",
-      "destination": "https://gamma-api.polymarket.com/:match*"
+      "source": "/api/poly/:path*",
+      "destination": "https://gamma-api.polymarket.com/:path*"
     },
     {
       "source": "/(.*)",

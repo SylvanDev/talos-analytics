@@ -47,7 +47,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onConnect, onGuestEnte
             <div className="inline-block mb-6">
                 <div className="flex items-center gap-2 px-3 py-1 bg-slate-800/50 border border-slate-700 rounded text-xs text-slate-400 font-mono">
                     <Terminal className="w-3 h-3" />
-                    <span>BUILDER ID: 0xc7c...f025</span>
+                    <span>VERSION 2.0.4 (STABLE)</span>
                 </div>
             </div>
             
@@ -81,7 +81,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onConnect, onGuestEnte
         {/* Stats Strip */}
         <div className="mt-24 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-slate-800/50 pt-12">
             {[
-                { label: 'Markets Indexed', value: '2,400+', icon: <Activity className="w-4 h-4 text-blue-500" /> },
+                { label: 'Markets Indexed', value: 'Live', icon: <Activity className="w-4 h-4 text-blue-500" /> },
                 { label: 'Real-Time Latency', value: '<50ms', icon: <Zap className="w-4 h-4 text-yellow-500" /> },
                 { label: 'Risk Models', value: 'Gemini 3.0', icon: <BrainCircuit className="w-4 h-4 text-purple-500" /> },
                 { label: 'Security', value: 'Verified', icon: <ShieldCheck className="w-4 h-4 text-emerald-500" /> },
@@ -96,17 +96,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onConnect, onGuestEnte
         </div>
       </main>
 
-      {/* Ticker Tape */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#0f172a] border-t border-slate-800 h-10 flex items-center overflow-hidden z-20">
-          <div className="flex items-center animate-shine whitespace-nowrap gap-8 px-4 text-xs font-mono text-slate-400">
-              <span className="text-emerald-400">TRUMP 2024: 52% (+2%)</span>
-              <span className="text-red-400">FED RATE CUT: 12% (-5%)</span>
-              <span className="text-blue-400">BTC > 100K: 65% (NC)</span>
-              <span className="text-emerald-400">SOL ETF: 33% (+1%)</span>
-              <span className="text-slate-500">SYSTEM STATUS: OPTIMAL</span>
-              <span className="text-emerald-400">TRUMP 2024: 52% (+2%)</span>
-              <span className="text-red-400">FED RATE CUT: 12% (-5%)</span>
-              <span className="text-blue-400">BTC > 100K: 65% (NC)</span>
+      {/* Footer / Status */}
+      <div className="fixed bottom-0 left-0 right-0 bg-[#0f172a] border-t border-slate-800 h-10 flex items-center px-6 z-20">
+          <div className="flex items-center gap-4 text-xs font-mono text-slate-500">
+             <span className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+                Gamma API Gateway: Ready
+             </span>
+             <span>|</span>
+             <span>Build: v2.0.4</span>
           </div>
       </div>
 

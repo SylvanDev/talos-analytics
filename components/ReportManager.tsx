@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AnalysisResult, RiskLevel } from '../types';
-import { ChevronLeft, BrainCircuit, AlertTriangle, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { ChevronLeft, BrainCircuit, AlertTriangle, TrendingUp, TrendingDown, DollarSign, ShieldCheck } from 'lucide-react';
 
 interface ReportManagerProps {
   reports: AnalysisResult[];
@@ -22,11 +22,11 @@ export const ReportManager: React.FC<ReportManagerProps> = ({ reports }) => {
           </button>
           
           <div className={`px-3 py-1 rounded text-xs font-bold border flex items-center gap-2 ${
-               selectedReport.recommendation === 'BUY' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800' :
-               selectedReport.recommendation === 'SELL' ? 'bg-red-900/30 text-red-400 border-red-800' :
+               selectedReport.alphaVerdict === 'BUY' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800' :
+               selectedReport.alphaVerdict === 'SELL' ? 'bg-red-900/30 text-red-400 border-red-800' :
                'bg-slate-700 text-slate-300 border-slate-600'
              }`}>
-                VERDICT: {selectedReport.recommendation}
+                VERDICT: {selectedReport.alphaVerdict}
           </div>
         </div>
 
@@ -65,16 +65,22 @@ export const ReportManager: React.FC<ReportManagerProps> = ({ reports }) => {
                  </p>
                </div>
 
-               {selectedReport.keyRisks.length > 0 && (
-                   <div className="bg-red-900/10 border border-red-900/30 p-6 rounded-lg">
-                       <h3 className="font-bold text-red-400 mb-3 flex items-center gap-2">
-                           <AlertTriangle className="w-4 h-4" /> Key Risks Identified
+               {/* Safety Notes replaced keyRisks */}
+               {selectedReport.safetyNotes && (
+                   <div className={`border p-6 rounded-lg ${
+                       selectedReport.riskLevel === RiskLevel.SAFE ? 'bg-emerald-900/10 border-emerald-900/30' : 'bg-red-900/10 border-red-900/30'
+                   }`}>
+                       <h3 className={`font-bold mb-3 flex items-center gap-2 ${
+                           selectedReport.riskLevel === RiskLevel.SAFE ? 'text-emerald-400' : 'text-red-400'
+                       }`}>
+                           {selectedReport.riskLevel === RiskLevel.SAFE ? <ShieldCheck className="w-4 h-4"/> : <AlertTriangle className="w-4 h-4" />} 
+                           Safety Analysis
                        </h3>
-                       <ul className="list-disc list-inside space-y-2">
-                           {selectedReport.keyRisks.map((risk, i) => (
-                               <li key={i} className="text-red-200/80 text-sm">{risk}</li>
-                           ))}
-                       </ul>
+                       <p className={`${
+                           selectedReport.riskLevel === RiskLevel.SAFE ? 'text-emerald-200/80' : 'text-red-200/80'
+                       } text-sm`}>
+                           {selectedReport.safetyNotes}
+                       </p>
                    </div>
                )}
              </div>
@@ -112,12 +118,12 @@ export const ReportManager: React.FC<ReportManagerProps> = ({ reports }) => {
              >
                <div className="flex items-center gap-4">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${
-                        report.recommendation === 'BUY' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' :
-                        report.recommendation === 'SELL' ? 'border-red-500/30 bg-red-500/10 text-red-500' :
+                        report.alphaVerdict === 'BUY' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' :
+                        report.alphaVerdict === 'SELL' ? 'border-red-500/30 bg-red-500/10 text-red-500' :
                         'border-slate-500/30 bg-slate-500/10 text-slate-500'
                   }`}>
-                    {report.recommendation === 'BUY' ? <TrendingUp className="w-5 h-5" /> : 
-                     report.recommendation === 'SELL' ? <TrendingDown className="w-5 h-5" /> : <DollarSign className="w-5 h-5"/>}
+                    {report.alphaVerdict === 'BUY' ? <TrendingUp className="w-5 h-5" /> : 
+                     report.alphaVerdict === 'SELL' ? <TrendingDown className="w-5 h-5" /> : <DollarSign className="w-5 h-5"/>}
                   </div>
                   <div className="flex-grow">
                     <h3 className="font-bold text-white group-hover:text-blue-400 transition-colors line-clamp-1">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PolymarketEvent } from '../types';
 import { fetchTopMarkets, getMarketUrl } from '../services/polymarketService';
-import { ExternalLink, TrendingUp, DollarSign, Activity, RefreshCw, Wifi, WifiOff, ShieldCheck, Network } from 'lucide-react';
+import { ExternalLink, TrendingUp, DollarSign, Activity, RefreshCw, Wifi, WifiOff, Network, AlertCircle } from 'lucide-react';
 
 interface LiveScannerProps {
   campaignName: string;
@@ -11,21 +11,25 @@ export const LiveScanner: React.FC<LiveScannerProps> = () => {
   const [markets, setMarkets] = useState<PolymarketEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
   const [connectionSource, setConnectionSource] = useState<string>('Initializing...');
   const [lastUpdated, setLastUpdated] = useState<string>('');
 
   const loadData = async () => {
     setLoading(true);
+    setError(false);
+    setErrorMsg('');
+    setConnectionSource('Connecting...');
     
     const { data, source } = await fetchTopMarkets();
     setConnectionSource(source);
 
-    if (data.length > 0) {
+    if (data && data.length > 0) {
         setMarkets(data);
         setLastUpdated(new Date().toLocaleTimeString());
-        setError(false);
     } else {
         setError(true);
+        setErrorMsg(source);
     }
     setLoading(false);
   };
@@ -47,7 +51,7 @@ export const LiveScanner: React.FC<LiveScannerProps> = () => {
           <div className="text-xs text-slate-500 flex items-center gap-3 mt-1">
              <span className={`flex items-center gap-1 ${error ? 'text-red-400' : 'text-emerald-400'}`}>
                 {error ? <WifiOff className="w-3 h-3"/> : <Wifi className="w-3 h-3"/>}
-                {error ? 'Feed Lost' : 'Feed Active'}
+                {error ? 'Feed Error' : 'Feed Active'}
              </span>
              <span className="text-slate-600">|</span>
              <span className="flex items-center gap-1 text-slate-400">
@@ -85,15 +89,19 @@ export const LiveScanner: React.FC<LiveScannerProps> = () => {
           {/* Hard Error */}
           {!loading && error && markets.length === 0 && (
              <div className="flex flex-col items-center justify-center h-64 gap-4 text-center px-8">
-                <ShieldCheck className="w-12 h-12 text-red-500" />
+                <AlertCircle className="w-12 h-12 text-red-500" />
                 <div>
                     <h4 className="text-white font-bold mb-1">Connection Failed</h4>
-                    <p className="text-slate-500 text-sm max-w-xs mx-auto mb-4">
-                        Unable to reach Polymarket via any gateway. Check your internet connection.
+                    <p className="text-red-300 text-sm font-mono bg-red-900/20 px-4 py-2 rounded border border-red-900/50 mb-4 max-w-lg mx-auto break-all">
+                        {errorMsg}
+                    </p>
+                    <p className="text-slate-500 text-xs mb-4">
+                        Unable to fetch real data from Polymarket API.<br/>
+                        This is expected in a restricted preview environment.
                     </p>
                      <button 
                         onClick={loadData} 
-                        className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded font-bold transition-colors"
+                        className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded font-bold transition-colors shadow-lg shadow-red-900/20"
                     >
                         RETRY CONNECTION
                     </button>
@@ -111,7 +119,7 @@ export const LiveScanner: React.FC<LiveScannerProps> = () => {
               <div className="flex justify-between items-start mb-3 relative z-10">
                  <div className="flex items-center gap-3">
                     {market.image ? (
-                        <img src={market.image} alt="icon" className="w-10 h-10 rounded-full border border-slate-600 object-cover" />
+                        <img src={market.image} alt="icon" onError={(e) => e.currentTarget.style.display = 'none'} className="w-10 h-10 rounded-full border border-slate-600 object-cover" />
                     ) : (
                         <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
                             <DollarSign className="w-5 h-5 text-slate-500" />

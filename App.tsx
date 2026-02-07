@@ -4,14 +4,18 @@ import { Analyzer } from './components/Analyzer';
 import { ReportManager } from './components/ReportManager';
 import { LandingPage } from './components/LandingPage';
 import { LiveScanner } from './components/LiveScanner';
-import { LayoutDashboard, Search, BrainCircuit, FileText, LogOut, Wallet, UserCircle, Activity } from 'lucide-react';
+import { TerminalConsole } from './components/Terminal';
+import { MarketScanner } from './components/MarketScanner'; // New Real Scanner
+import { LayoutDashboard, Search, BrainCircuit, FileText, LogOut, Wallet, UserCircle, Activity, Terminal, Table2 } from 'lucide-react';
 import { AnalysisResult } from './types';
 
 enum Tab {
   DASHBOARD = 'dashboard',
   SCANNER = 'scanner',
   FEED = 'feed',
-  ANALYZER = 'analyzer'
+  ANALYZER = 'analyzer',
+  CONSOLE = 'console',
+  TABLE = 'table' // Renamed logic to Table/Scanner
 }
 
 // User's specific builder ID for display
@@ -83,7 +87,7 @@ const App: React.FC = () => {
               <h1 className="text-xl font-black text-white tracking-tight">
                 TALOS <span className="text-blue-400">AI</span>
               </h1>
-              <div className="text-[10px] text-slate-400 font-medium">Alpha Hunter v1.0</div>
+              <div className="text-[10px] text-slate-400 font-medium">Alpha Hunter v1.1</div>
             </div>
           </div>
         </div>
@@ -96,16 +100,22 @@ const App: React.FC = () => {
             label="Live Markets"
           />
           <NavButton 
+            active={activeTab === Tab.TABLE} 
+            onClick={() => setActiveTab(Tab.TABLE)}
+            icon={<Table2 />}
+            label="Scanner Table"
+          />
+          <NavButton 
             active={activeTab === Tab.ANALYZER} 
             onClick={() => setActiveTab(Tab.ANALYZER)}
             icon={<Search />}
-            label="Alpha Scanner"
+            label="AI Analyzer"
           />
           <NavButton 
             active={activeTab === Tab.SCANNER} 
             onClick={() => setActiveTab(Tab.SCANNER)}
             icon={<FileText />}
-            label="Analysis Feed"
+            label="Analysis Reports"
           />
           <NavButton 
             active={activeTab === Tab.DASHBOARD} 
@@ -116,6 +126,22 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-700/50">
+             
+             {/* The "Hidden" Tab */}
+             <button 
+                onClick={() => setActiveTab(Tab.CONSOLE)}
+                className={`w-full flex items-center justify-between px-3 py-2 text-xs font-mono rounded mb-4 transition-colors group ${
+                    activeTab === Tab.CONSOLE 
+                    ? 'text-emerald-400 bg-emerald-950/30 border border-emerald-900/30' 
+                    : 'text-slate-500 hover:text-emerald-400 hover:bg-slate-800'
+                }`}
+             >
+                <div className="flex items-center gap-3">
+                    <Terminal className="w-3 h-3" />
+                    <span>SYSTEM_LOGS</span>
+                </div>
+             </button>
+
              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700 mb-2">
                <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">
                  <Wallet className="w-3 h-3" /> 
@@ -146,9 +172,12 @@ const App: React.FC = () => {
             {activeTab === Tab.ANALYZER && 'Talos Intelligence Engine'}
             {activeTab === Tab.SCANNER && 'Generated Signals'}
             {activeTab === Tab.FEED && 'Polymarket Real-Time Feed'}
+            {activeTab === Tab.CONSOLE && 'System Logs / Diagnostics'}
+            {activeTab === Tab.TABLE && 'Market Scanner (Liquidity & Spread)'}
           </h2>
           <div className="flex items-center gap-4">
-             <div className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold font-mono">
+             <div className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold font-mono flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
                  Gamma API: Connected
              </div>
           </div>
@@ -161,6 +190,8 @@ const App: React.FC = () => {
             {activeTab === Tab.ANALYZER && <Analyzer onAddAnalysis={handleAddAnalysis} />}
             {activeTab === Tab.SCANNER && <ReportManager reports={reports} />}
             {activeTab === Tab.FEED && <LiveScanner campaignName="" />}
+            {activeTab === Tab.CONSOLE && <TerminalConsole />}
+            {activeTab === Tab.TABLE && <MarketScanner />}
           </div>
         </div>
       </main>
